@@ -34,14 +34,5 @@ docker buildx inspect mybuilder --bootstrap
 # Pass the Git tag as a build argument and build for multiple architectures using the OCI exporter
 docker buildx build --platform linux/amd64,linux/arm64 --build-arg APP_VERSION="${APP_VERSION}" -t "${IMAGE_NAME}" --output "type=oci,dest=./myimage.tar" .
 
-# Create a directory to extract the files
-mkdir -p myimage_extracted
-
-# Extract the tarball contents into the newly created directory
-tar -xvf ./myimage.tar -C myimage_extracted
-
-# Repack the extracted contents into a new tarball
-tar -cvf myimage_repacked.tar -C myimage_extracted .
-
 # Import the new tarball into Docker
-cat myimage_repacked.tar | docker import - ${IMAGE_NAME}
+#cat myimage.tar | docker import - ${IMAGE_NAME}

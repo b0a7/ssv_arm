@@ -1,10 +1,47 @@
 #!/bin/bash
 
-# Enable BuildKit
+# Enable experimental features and BuildKit
+export DOCKER_CLI_EXPERIMENTAL=enabled
 export DOCKER_BUILDKIT=1
 
-# Extract the Git tag from the SOURCE_COMMIT
-APP_VERSION=$(git describe --tags "${SOURCE_COMMIT}")
+# Check if SOURCE_COMMIT is set and get the Git tag
+if [ -z "${SOURCE_COMMIT}" ]; then
+  echo "SOURCE_COMMIT environment variable is not set."
+  exit 1
+fi
 
-# Pass the Git tag as a build argument
-docker build --build-arg APP_VERSION="${APP_VERSION}" -t "${IMAGE_NAME}" .
+APP_VERSION=$(git describe --tags "${SOURCE_COMMIT}" 2>/dev/null)
+
+if [ -z "${APP_VERSION}" ]; then
+  echo "No Git tag found for the specified commit."
+  exit 1
+fi
+
+# Set IMAGE_NAME
+if [ -z "${IMAGE_NAME}" ]; then
+  IMAGE_NAME="yourusername/yourrepositoryname:${APP_VERSION}"
+fi
+
+echo "IMAGE_NAME: ${IMAGE_NAME}"
+echo "APP_VERSION: ${APP_VERSION}"
+
+# Remove and recreate the builder instance if it exists
+docker buildx rm mybuilder || true
+docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+docker buildx create --name mybuilder --use
+docker buildx inspect mybuilder --bootstrap
+
+# Pass the Git tag as a build argument and build for multiple architectures using the OCI exporter
+docker buildx build --platform linux/amd64,linux/arm64 --build-arg APP_VERSION="${APP_VERSION}" -t "${IMAGE_NAME}" --output "type=oci,dest=./myimage.tar" .
+
+# Create a directory to extract the files
+mkdir -p myimage_extracted
+
+# Extract the tarball contents into the newly created directory
+tar -xvf ./myimage.tar -C myimage_extracted
+
+# Repack the extracted contents into a new tarball
+tar -cvf myimage_repacked.tar -C myimage_extracted .
+
+# Import the new tarball into Docker
+cat myimage_repacked.tar | docker import - ${IMAGE_NAME}

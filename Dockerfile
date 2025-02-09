@@ -1,7 +1,7 @@
 #
 # STEP 1: Prepare environment
 #
-FROM golang:1.22 AS preparer
+FROM --platform=$BUILDPLATFORM golang:1.22 AS preparer
 
 RUN apt-get update                                                        && \
   DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
@@ -25,6 +25,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
   go mod download
 
 ARG APP_VERSION
+
 #
 # STEP 2: Build executable binary
 #
@@ -37,7 +38,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
   --mount=type=cache,mode=0755,target=/go/pkg \
   COMMIT=$(git rev-parse HEAD) && \
   VERSION=$(git describe --tags $(git rev-list --tags --max-count=1) --always) && \
-  CGO_ENABLED=1 GOOS=linux go install \
+  GOARCH=$TARGETARCH GOOS=linux CGO_ENABLED=1 go install \
   -tags="blst_enabled" \
   -ldflags "-X main.Commit=$COMMIT -X main.Version=$VERSION -linkmode external -extldflags \"-static -lm\"" \
   ./cmd/ssvnode
@@ -45,7 +46,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 #
 # STEP 3: Prepare image to run the binary
 #
-FROM golang:1.22 AS runner
+FROM --platform=$BUILDPLATFORM golang:1.22 AS runner
 
 RUN apt-get update     && \
   DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
@@ -58,7 +59,6 @@ COPY --from=builder /go/bin/ssvnode /go/bin/ssvnode
 COPY ./Makefile .env* ./
 COPY config/* ./config/
 
-
 # Expose port for load balancing
 EXPOSE 5678 5000 4000/udp
 
@@ -66,4 +66,3 @@ EXPOSE 5678 5000 4000/udp
 ENV GODEBUG="netdns=go"
 
 #ENTRYPOINT ["/go/bin/ssvnode"]
-
